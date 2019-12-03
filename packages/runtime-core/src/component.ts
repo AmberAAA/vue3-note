@@ -1,5 +1,5 @@
 import { VNode, VNodeChild, isVNode } from './vnode'
-import { ReactiveEffect, reactive, readonlyProps } from '@vue/reactivity'
+import { ReactiveEffect, reactive, shallowReadonly } from '@vue/reactivity'
 import {
   PublicInstanceProxyHandlers,
   ComponentPublicInstance
@@ -28,6 +28,7 @@ import {
 } from '@vue/shared'
 import { SuspenseBoundary } from './components/Suspense'
 import { CompilerError, CompilerOptions } from '@vue/compiler-core'
+import { currentRenderingInstance } from './componentRenderUtils'
 
 export type Data = { [key: string]: unknown }
 
@@ -112,6 +113,7 @@ export interface ComponentInternalInstance {
   sink: { [key: string]: any }
 
   // lifecycle
+  isMounted: boolean
   isUnmounted: boolean
   isDeactivated: boolean
   [LifecycleHooks.BEFORE_CREATE]: LifecycleHook
@@ -179,6 +181,7 @@ export function createComponentInstance(
 
     // lifecycle hooks
     // not using enums here because it results in computed properties
+    isMounted: false,
     isUnmounted: false,
     isDeactivated: false,
     bc: null,
@@ -217,7 +220,7 @@ export let currentInstance: ComponentInternalInstance | null = null
 export let currentSuspense: SuspenseBoundary | null = null
 
 export const getCurrentInstance: () => ComponentInternalInstance | null = () =>
-  currentInstance
+  currentInstance || currentRenderingInstance
 
 export const setCurrentInstance = (
   instance: ComponentInternalInstance | null
@@ -266,7 +269,7 @@ export function setupStatefulComponent(
   // 2. create props proxy
   // the propsProxy is a reactive AND readonly proxy to the actual props.
   // it will be updated in resolveProps() on updates before render
-  const propsProxy = (instance.propsProxy = readonlyProps(instance.props))
+  const propsProxy = (instance.propsProxy = shallowReadonly(instance.props))
   // 3. call setup()
   const { setup } = Component
   if (setup) {

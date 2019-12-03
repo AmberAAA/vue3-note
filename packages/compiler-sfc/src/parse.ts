@@ -6,7 +6,7 @@ import {
   ElementNode,
   SourceLocation
 } from '@vue/compiler-core'
-import { RawSourceMap } from 'source-map'
+import { RawSourceMap, SourceMapGenerator } from 'source-map'
 import LRUCache from 'lru-cache'
 import { generateCodeFrame } from '@vue/shared'
 
@@ -14,6 +14,7 @@ export interface SFCParseOptions {
   needMap?: boolean
   filename?: string
   sourceRoot?: string
+  pad?: boolean | 'line' | 'space'
 }
 
 export interface SFCBlock {
@@ -56,10 +57,11 @@ export function parse(
   {
     needMap = true,
     filename = 'component.vue',
-    sourceRoot = ''
+    sourceRoot = '',
+    pad = 'line'
   }: SFCParseOptions = {}
 ): SFCDescriptor {
-  const sourceKey = source + needMap + filename + sourceRoot
+  const sourceKey = source + needMap + filename + sourceRoot + pad
   const cache = sourceToSFC.get(sourceKey)
   if (cache) {
     return cache
@@ -72,6 +74,7 @@ export function parse(
     styles: [],
     customBlocks: []
   }
+
   const ast = baseParse(source, {
     isNativeTag: () => true,
     getTextMode: () => TextModes.RAWTEXT
@@ -87,29 +90,50 @@ export function parse(
     switch (node.tag) {
       case 'template':
         if (!sfc.template) {
-          sfc.template = createBlock(node) as SFCTemplateBlock
+          sfc.template = createBlock(node, source, pad) as SFCTemplateBlock
         } else {
           warnDuplicateBlock(source, filename, node)
         }
         break
       case 'script':
         if (!sfc.script) {
-          sfc.script = createBlock(node) as SFCScriptBlock
+          sfc.script = createBlock(node, source, pad) as SFCScriptBlock
         } else {
           warnDuplicateBlock(source, filename, node)
         }
         break
       case 'style':
-        sfc.styles.push(createBlock(node) as SFCStyleBlock)
+        sfc.styles.push(createBlock(node, source, pad) as SFCStyleBlock)
         break
       default:
-        sfc.customBlocks.push(createBlock(node))
+        sfc.customBlocks.push(createBlock(node, source, pad))
         break
     }
   })
 
   if (needMap) {
-    // TODO source map
+    if (sfc.script && !sfc.script.src) {
+      sfc.script.map = generateSourceMap(
+        filename,
+        source,
+        sfc.script.content,
+        sourceRoot,
+        pad
+      )
+    }
+    if (sfc.styles) {
+      sfc.styles.forEach(style => {
+        if (!style.src) {
+          style.map = generateSourceMap(
+            filename,
+            source,
+            style.content,
+            sourceRoot,
+            pad
+          )
+        }
+      })
+    }
   }
   sourceToSFC.set(sourceKey, sfc)
 
@@ -134,7 +158,11 @@ function warnDuplicateBlock(
   )
 }
 
-function createBlock(node: ElementNode): SFCBlock {
+function createBlock(
+  node: ElementNode,
+  source: string,
+  pad: SFCParseOptions['pad']
+): SFCBlock {
   const type = node.tag
   const text = node.children[0] as TextNode
   const attrs: Record<string, string | true> = {}
@@ -143,6 +171,9 @@ function createBlock(node: ElementNode): SFCBlock {
     content: text.content,
     loc: text.loc,
     attrs
+  }
+  if (node.tag !== 'template' && pad) {
+    block.content = padContent(source, block, pad) + block.content
   }
   node.props.forEach(p => {
     if (p.type === NodeTypes.ATTRIBUTE) {
@@ -163,4 +194,61 @@ function createBlock(node: ElementNode): SFCBlock {
     }
   })
   return block
+}
+
+const splitRE = /\r?\n/g
+const emptyRE = /^(?:\/\/)?\s*$/
+const replaceRE = /./g
+
+function generateSourceMap(
+  filename: string,
+  source: string,
+  generated: string,
+  sourceRoot: string,
+  pad?: SFCParseOptions['pad']
+): RawSourceMap {
+  const map = new SourceMapGenerator({
+    file: filename.replace(/\\/g, '/'),
+    sourceRoot: sourceRoot.replace(/\\/g, '/')
+  })
+  let offset = 0
+  if (!pad) {
+    offset =
+      source
+        .split(generated)
+        .shift()!
+        .split(splitRE).length - 1
+  }
+  map.setSourceContent(filename, source)
+  generated.split(splitRE).forEach((line, index) => {
+    if (!emptyRE.test(line)) {
+      map.addMapping({
+        source: filename,
+        original: {
+          line: index + 1 + offset,
+          column: 0
+        },
+        generated: {
+          line: index + 1,
+          column: 0
+        }
+      })
+    }
+  })
+  return JSON.parse(map.toString())
+}
+
+function padContent(
+  content: string,
+  block: SFCBlock,
+  pad: SFCParseOptions['pad']
+): string {
+  content = content.slice(0, block.loc.start.offset)
+  if (pad === 'space') {
+    return content.replace(replaceRE, ' ')
+  } else {
+    const offset = content.split(splitRE).length
+    const padChar = block.type === 'script' && !block.lang ? '//\n' : '\n'
+    return Array(offset).join(padChar)
+  }
 }
