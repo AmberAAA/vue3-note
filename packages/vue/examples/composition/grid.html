@@ -7,9 +7,9 @@
       <tr>
         <th v-for="key in columns"
           @click="sortBy(key)"
-          :class="{ active: sortKey == key }">
+          :class="{ active: state.sortKey == key }">
           {{ capitalize(key) }}
-          <span class="arrow" :class="sortOrders[key] > 0 ? 'asc' : 'dsc'">
+          <span class="arrow" :class="state.sortOrders[key] > 0 ? 'asc' : 'dsc'">
           </span>
         </th>
       </tr>
@@ -71,7 +71,7 @@ const DemoGrid = {
     }
 
     return {
-      ...state,
+      state,
       filteredData,
       sortBy,
       capitalize
@@ -93,11 +93,11 @@ const DemoGrid = {
 </div>
 <!-- App script -->
 <script>
-const App = {
+Vue.createApp({
   components: {
     DemoGrid
   },
-  data: {
+  data: () => ({
     searchQuery: '',
     gridColumns: ['name', 'power'],
     gridData: [
@@ -106,10 +106,8 @@ const App = {
       { name: 'Jackie Chan', power: 7000 },
       { name: 'Jet Li', power: 8000 }
     ]
-  }
-}
-
-Vue.createApp().mount(App, '#demo')
+  })
+}).mount('#demo')
 </script>
 
 <style>

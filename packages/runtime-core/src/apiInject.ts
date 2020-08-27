@@ -37,10 +37,10 @@ export function inject(
   const instance = currentInstance || currentRenderingInstance
   if (instance) {
     const provides = instance.provides
-    if (key in provides) {
+    if ((key as string | symbol) in provides) {
       // TS doesn't allow symbol as index type
       return provides[key as string]
-    } else if (defaultValue !== undefined) {
+    } else if (arguments.length > 1) {
       return defaultValue
     } else if (__DEV__) {
       warn(`injection "${String(key)}" not found.`)

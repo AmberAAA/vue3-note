@@ -1,14 +1,29 @@
 import { UrlWithStringQuery, parse as uriParse } from 'url'
+import { isString } from '@vue/shared'
 
-// We need an extra transform context API for injecting arbitrary import
-// statements.
+export function isRelativeUrl(url: string): boolean {
+  const firstChar = url.charAt(0)
+  return firstChar === '.' || firstChar === '~' || firstChar === '@'
+}
+
+const externalRE = /^https?:\/\//
+export function isExternalUrl(url: string): boolean {
+  return externalRE.test(url)
+}
+
+const dataUrlRE = /^\s*data:/i
+export function isDataUrl(url: string): boolean {
+  return dataUrlRE.test(url)
+}
+
+/**
+ * Parses string url into URL object.
+ */
 export function parseUrl(url: string): UrlWithStringQuery {
   const firstChar = url.charAt(0)
-  if (firstChar === '.' || firstChar === '~' || firstChar === '@') {
-    if (firstChar === '~') {
-      const secondChar = url.charAt(1)
-      url = url.slice(secondChar === '/' ? 2 : 1)
-    }
+  if (firstChar === '~') {
+    const secondChar = url.charAt(1)
+    url = url.slice(secondChar === '/' ? 2 : 1)
   }
   return parseUriParts(url)
 }
@@ -18,15 +33,7 @@ export function parseUrl(url: string): UrlWithStringQuery {
  * @param urlString an url as a string
  */
 function parseUriParts(urlString: string): UrlWithStringQuery {
-  // initialize return value
-  const returnValue: UrlWithStringQuery = uriParse('')
-  if (urlString) {
-    // A TypeError is thrown if urlString is not a string
-    // @see https://nodejs.org/api/url.html#url_url_parse_urlstring_parsequerystring_slashesdenotehost
-    if ('string' === typeof urlString) {
-      // check is an uri
-      return uriParse(urlString) // take apart the uri
-    }
-  }
-  return returnValue
+  // A TypeError is thrown if urlString is not a string
+  // @see https://nodejs.org/api/url.html#url_url_parse_urlstring_parsequerystring_slashesdenotehost
+  return uriParse(isString(urlString) ? urlString : '')
 }
